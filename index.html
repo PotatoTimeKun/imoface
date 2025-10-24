@@ -101,28 +101,50 @@
     };
 
     // 🔹 顔検出＋合成処理
-    processBtn.addEventListener("click", async () => {
-      if (!model || !overlayImage) return;
+processBtn.addEventListener("click", async () => {
+    if (!model || !overlayImage) return;
 
-      // BlazeFaceはTensor入力を要求
-      const predictions = await model.estimateFaces(image, false);
-      console.log(predictions);
+    const predictions = await model.estimateFaces(image, false);
+    // 元画像を再描画
+    ctx.drawImage(image, 0, 0);
+    console.log(predictions);
 
-      // 元画像を再描画
-      ctx.drawImage(image, 0, 0);
+    predictions.forEach(pred => {
+        const [x_start, y_start] = pred.topLeft;
+        const [x_end, y_end] = pred.bottomRight;
 
-      // 複数の顔それぞれにoverlayを貼る
-      predictions.forEach(pred => {
-        const [x, y] = pred.topLeft;
-        const [x2, y2] = pred.bottomRight;
-        const w = x2 - x;
-        const h = y2 - y;
+        // 検出された幅と高さ
+        const w_orig = x_end - x_start;
+        const h_orig = y_end - y_start;
+        
+        // ----------------------------------------------------
+        // ✨ 調整ロジック ✨
+        // ----------------------------------------------------
+        
+        // 1. パディング（拡大）を設定
+        // 幅を約20%拡大するパディング
+        const W_PADDING_RATIO = 0.30; 
+        const H_PADDING_RATIO = 0.40; // 縦はもっと大きく拡大し、上にずらす
+        
+        // 拡大後の新しい幅
+        const w_new = w_orig * (1 + W_PADDING_RATIO);
+        // 拡大後の新しい高さ
+        const h_new = h_orig * (1 + H_PADDING_RATIO); 
 
-        ctx.drawImage(overlayImage, x, y, w, h);
-      });
+        // 2. 新しい描画開始位置の計算
+        // x座標を中央寄せで調整
+        const x_new = x_start - (w_new - w_orig) / 2;
+        // y座標を上に調整 (例: 検出された開始位置から上に10%ずらす)
+        // 💡 BlazeFaceは鼻のあたりを検出するため、上に大きくパディングが必要です
+        const y_new = y_start - h_orig * 0.3; // 検出高さの15%分上に移動させる
 
-      downloadBtn.disabled = false;
+        // 3. 描画
+        // 新しい位置とサイズで合成画像をdrawImage
+        ctx.drawImage(overlayImage, x_new, y_new, w_new, h_new);
     });
+
+    downloadBtn.disabled = false;
+});
 
     // 🔹 加工画像をダウンロード
     downloadBtn.addEventListener("click", () => {
