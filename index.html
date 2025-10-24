@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>BlazeFaceで複数顔を検出＆合成</title>
+<style>
+  body {
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 2rem;
+    background: #f4f4f4;
+  }
+  canvas {
+    border: 1px solid #aaa;
+    border-radius: 8px;
+    max-width: 90vw;
+  }
+  #controls {
+    display: flex;
+    gap: 1rem;
+  }
+  button {
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #0078d7;
+    color: white;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #999;
+    cursor: not-allowed;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0"></script>
+</head>
+<body>
+  <h2>BlazeFaceで複数の顔に画像を合成するデモ</h2>
+
+  <input type="file" id="fileInput" accept="image/*">
+  <canvas id="canvas"></canvas>
+
+  <div id="controls">
+    <button id="processBtn" disabled>顔検出＋合成</button>
+    <button id="downloadBtn" disabled>ダウンロード</button>
+  </div>
+
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const processBtn = document.getElementById("processBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+
+    let image = new Image();
+    let model;
+    let overlayImage;
+
+    // 🔹 モデルとオーバーレイ画像を事前にロード
+    async function init() {
+      console.log("モデル読み込み中...");
+      model = await blazeface.load(); // 自動で軽量モデルを読み込む
+      overlayImage = await loadOverlayImage("imo.png");
+      console.log("モデルとオーバーレイ画像読み込み完了");
+    }
+
+    // 🔹 overlay画像を非同期ロード
+    async function loadOverlayImage(url) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      return new Promise((resolve, reject) => {
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+    }
+
+    // 🔹 画像選択イベント
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // 🔹 画像がロードされたらCanvasに描画
+    image.onload = () => {
+      canvas.width = image.width;
+      canvas.height = image.height;
+      ctx.drawImage(image, 0, 0);
+      processBtn.disabled = false;
+    };
+
+    // 🔹 顔検出＋合成処理
+    processBtn.addEventListener("click", async () => {
+      if (!model || !overlayImage) return;
+
+      // BlazeFaceはTensor入力を要求
+      const predictions = await model.estimateFaces(image, false);
+      console.log(predictions);
+
+      // 元画像を再描画
+      ctx.drawImage(image, 0, 0);
+
+      // 複数の顔それぞれにoverlayを貼る
+      predictions.forEach(pred => {
+        const [x, y] = pred.topLeft;
+        const [x2, y2] = pred.bottomRight;
+        const w = x2 - x;
+        const h = y2 - y;
+
+        ctx.drawImage(overlayImage, x, y, w, h);
+      });
+
+      downloadBtn.disabled = false;
+    });
+
+    // 🔹 加工画像をダウンロード
+    downloadBtn.addEventListener("click", () => {
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = "processed.png";
+      a.click();
+    });
+
+    init(); // 起動時にモデルロード
+  </script>
+</body>
+</html>
