@@ -43,6 +43,16 @@
     background: #999;
     cursor: not-allowed;
   }
+  /* HTML: <div class="loader"></div> */
+  .loader {
+    width: 50px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 8px solid;
+    border-color: #000 #0000;
+    animation: l1 1s infinite;
+  }
+  @keyframes l1 {to{transform: rotate(.5turn)}}
 </style>
 <!-- tensorflowとblazefaceのインポート  順番を変えないこと -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script> 
@@ -50,10 +60,12 @@
 </head>
 <body>
   <main>
+    <div class="loader"></div>
+    <p2 class="loadText">モデルロード中</p2>
     <h2>顔に芋を貼り付けよう</h2>
 
     <input type="file" id="fileInput" accept="image/*">
-    <canvas id="canvas"></canvas>
+    <canvas id="canvas" style="max-height: 90vh;"></canvas>
 
     <div id="controls">
       <button id="processBtn" disabled>顔検出＋合成</button>
@@ -67,6 +79,8 @@
     const ctx = canvas.getContext("2d");
     const processBtn = document.getElementById("processBtn");
     const downloadBtn = document.getElementById("downloadBtn");
+    const loadingCss = document.getElementsByClassName("loader")[0];
+    const loadingText = document.getElementsByClassName("loadText")[0];
 
     let image = new Image();
     let model;
@@ -76,8 +90,10 @@
     async function init() {
       console.log("モデル読み込み中...");
       model = await blazeface.load(); // 自動で軽量モデルを読み込む
-      overlayImage = await loadOverlayImage("https://potatotimekun.github.io/imoface/imo.png");
+      overlayImage = await loadOverlayImage("imo.png");
       console.log("モデルとオーバーレイ画像読み込み完了");
+      loadingCss.style = "display:none;";
+      loadingText.style = "display:none;";
     }
 
     // 🔹 overlay画像を非同期ロード
@@ -113,7 +129,9 @@
     // 🔹 顔検出＋合成処理
     processBtn.addEventListener("click", async () => {
     if (!model || !overlayImage) return;
-
+    loadingCss.style = "";
+    loadingText.style = "";
+    loadingText.innerHTML = "画像を処理中";
     const predictions = await model.estimateFaces(image, false);
     // 元画像を再描画
     ctx.drawImage(image, 0, 0);
@@ -152,6 +170,8 @@
         // 新しい位置とサイズで合成画像をdrawImage
         ctx.drawImage(overlayImage, x_new, y_new, w_new, h_new);
     });
+    loadingCss.style = "display:none;";
+    loadingText.style = "display:none;";
 
     downloadBtn.disabled = false;
     });
