@@ -62,10 +62,10 @@
 </head>
 <body>
   <main>
+    <h2>顔に芋を貼り付けよう</h2>
     <div class="loader"></div>
     <p2 class="loadText">モデルロード中</p2>
-    <h2>顔に芋を貼り付けよう</h2>
-
+    
     <input type="file" id="fileInput" accept="image/*">
     <canvas id="canvas" style="max-height:90vh;"></canvas>
 
@@ -75,6 +75,25 @@
       <button id="deleteBtn" disabled>選択削除</button>
       <button id="downloadBtn" disabled>ダウンロード</button>
     </div>
+    <!-- 操作説明セクション -->
+    <section id="instructions" style="max-width: 600px; background: #fff; padding: 1rem 1.5rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); line-height: 1.6;">
+      <h3 style="margin-top: 0; text-align: center;">📝 操作説明</h3>
+      <ul style="padding-left: 1.2rem; list-style-type: '💡 ';">
+        <li>画像を選択するとキャンバスに表示されます。</li>
+        <li><b>「顔検出＋貼り付け」</b>を押すと、自動で顔に芋が配置されます。</li>
+        <li>検出後、各芋を次の操作で編集できます：</li>
+        <ul style="padding-left: 1.5rem; list-style-type: '👉 ';">
+          <li><b>クリック</b>で選択</li>
+          <li><b>ドラッグ</b>で位置移動</li>
+          <li><b>端をドラッグ</b>でサイズ変更</li>
+          <li><b>Shift+中央付近をドラッグ</b>で回転</li>
+          <li><b>「選択削除」ボタン</b>で選択した芋を削除</li>
+          <li><b>「芋を追加」ボタン</b>で新たに芋を追加</li>
+        </ul>
+        <li>編集は<b>スマホでは一部対応していない操作</b>があります。</li>
+        <li>調整が終わったら、<b>「ダウンロード」</b>で保存できます。</li>
+      </ul>
+    </section>
   </main>
 
   <script>
