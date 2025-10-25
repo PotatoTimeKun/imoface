@@ -2,16 +2,24 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>BlazeFaceで複数顔を検出＆合成</title>
+<title>顔に芋を貼るAI</title>
 <style>
-  body {
+  body,main {
     font-family: sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 1rem;
-    padding: 2rem;
     background: #f4f4f4;
+  }
+  body {
+    min-height: 95vh;
+    display: flex;
+    flex-direction: column;
+  }
+  main{
+    flex:1;
+    padding: 2rem;
   }
   canvas {
     border: 1px solid #aaa;
@@ -36,20 +44,22 @@
     cursor: not-allowed;
   }
 </style>
+<!-- tensorflowとblazefaceのインポート  順番を変えないこと -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script> 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
 </head>
 <body>
-  <h2>BlazeFaceで複数の顔に画像を合成するデモ</h2>
+  <main>
+    <h2>顔に芋を貼り付けよう</h2>
 
-  <input type="file" id="fileInput" accept="image/*">
-  <canvas id="canvas"></canvas>
+    <input type="file" id="fileInput" accept="image/*">
+    <canvas id="canvas"></canvas>
 
-  <div id="controls">
-    <button id="processBtn" disabled>顔検出＋合成</button>
-    <button id="downloadBtn" disabled>ダウンロード</button>
-  </div>
-
+    <div id="controls">
+      <button id="processBtn" disabled>顔検出＋合成</button>
+      <button id="downloadBtn" disabled>ダウンロード</button>
+    </div>
+  </main>
 
   <script>
     const fileInput = document.getElementById("fileInput");
@@ -101,7 +111,7 @@
     };
 
     // 🔹 顔検出＋合成処理
-processBtn.addEventListener("click", async () => {
+    processBtn.addEventListener("click", async () => {
     if (!model || !overlayImage) return;
 
     const predictions = await model.estimateFaces(image, false);
@@ -144,7 +154,7 @@ processBtn.addEventListener("click", async () => {
     });
 
     downloadBtn.disabled = false;
-});
+    });
 
     // 🔹 加工画像をダウンロード
     downloadBtn.addEventListener("click", () => {
