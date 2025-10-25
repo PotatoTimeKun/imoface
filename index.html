@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>顔に芋を貼るAI</title>
 <style>
-  body,main {
+  body, main {
     font-family: sans-serif;
     display: flex;
     flex-direction: column;
@@ -17,18 +17,21 @@
     display: flex;
     flex-direction: column;
   }
-  main{
-    flex:1;
+  main {
+    flex: 1;
     padding: 2rem;
   }
   canvas {
     border: 1px solid #aaa;
     border-radius: 8px;
     max-width: 90vw;
+    cursor: grab;
   }
   #controls {
     display: flex;
     gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   button {
     padding: 0.6rem 1.2rem;
@@ -43,7 +46,6 @@
     background: #999;
     cursor: not-allowed;
   }
-  /* HTML: <div class="loader"></div> */
   .loader {
     width: 50px;
     aspect-ratio: 1;
@@ -54,8 +56,8 @@
   }
   @keyframes l1 {to{transform: rotate(.5turn)}}
 </style>
-<!-- tensorflowとblazefaceのインポート  順番を変えないこと -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script> 
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
 </head>
 <body>
@@ -65,38 +67,43 @@
     <h2>顔に芋を貼り付けよう</h2>
 
     <input type="file" id="fileInput" accept="image/*">
-    <canvas id="canvas" style="max-height: 90vh;"></canvas>
+    <canvas id="canvas" style="max-height:90vh;"></canvas>
 
     <div id="controls">
-      <button id="processBtn" disabled>顔検出＋合成</button>
+      <button id="processBtn" disabled>顔検出＋貼り付け</button>
+      <button id="addBtn" disabled>芋を追加</button>
+      <button id="deleteBtn" disabled>選択削除</button>
       <button id="downloadBtn" disabled>ダウンロード</button>
     </div>
   </main>
 
   <script>
-    const fileInput = document.getElementById("fileInput");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
+    const fileInput = document.getElementById("fileInput");
     const processBtn = document.getElementById("processBtn");
+    const addBtn = document.getElementById("addBtn");
+    const deleteBtn = document.getElementById("deleteBtn");
     const downloadBtn = document.getElementById("downloadBtn");
     const loadingCss = document.getElementsByClassName("loader")[0];
     const loadingText = document.getElementsByClassName("loadText")[0];
 
     let image = new Image();
-    let model;
-    let overlayImage;
+    let model, overlayImage;
+    let overlays = []; // ← 全overlay情報を格納
+    let selectedIndex = null;
+    let dragging = false;
+    let rotating = false;
+    let resizing = false;
+    let lastMouse = { x: 0, y: 0 };
 
-    // 🔹 モデルとオーバーレイ画像を事前にロード
     async function init() {
-      console.log("モデル読み込み中...");
-      model = await blazeface.load(); // 自動で軽量モデルを読み込む
+      model = await blazeface.load();
       overlayImage = await loadOverlayImage("imo.png");
-      console.log("モデルとオーバーレイ画像読み込み完了");
       loadingCss.style = "display:none;";
       loadingText.style = "display:none;";
     }
 
-    // 🔹 overlay画像を非同期ロード
     async function loadOverlayImage(url) {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -107,18 +114,14 @@
       });
     }
 
-    // 🔹 画像選択イベント
-    fileInput.addEventListener("change", (e) => {
+    fileInput.addEventListener("change", e => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        image.src = reader.result;
-      };
+      reader.onload = () => { image.src = reader.result; };
       reader.readAsDataURL(file);
     });
 
-    // 🔹 画像がロードされたらCanvasに描画
     image.onload = () => {
       canvas.width = image.width;
       canvas.height = image.height;
@@ -126,69 +129,176 @@
       processBtn.disabled = false;
     };
 
-    // 🔹 顔検出＋合成処理
     processBtn.addEventListener("click", async () => {
-    if (!model || !overlayImage) return;
-    loadingCss.style = "";
-    loadingText.style = "";
-    loadingText.innerHTML = "画像を処理中";
-    const predictions = await model.estimateFaces(image, false);
-    // 元画像を再描画
-    ctx.drawImage(image, 0, 0);
-    console.log(predictions);
+      if (!model) return;
+      loadingCss.style = "";
+      loadingText.style = "";
+      loadingText.innerHTML = "顔検出中…";
 
-    predictions.forEach(pred => {
-        const [x_start, y_start] = pred.topLeft;
-        const [x_end, y_end] = pred.bottomRight;
+      const preds = await model.estimateFaces(image, false);
+      overlays = preds.map(pred => {
+        const [x1, y1] = pred.topLeft;
+        const [x2, y2] = pred.bottomRight;
+        const w = x2 - x1;
+        const h = y2 - y1;
+        const cx = x1 + w / 2;
+        const cy = y1 + h / 2;
+        const W_PAD = 0.3, H_PAD = 0.4;
+        const ww = w * (1 + W_PAD);
+        const hh = h * (1 + H_PAD);
+        let angle = 0;
+        if (pred.landmarks?.length >= 2) {
+          const [l, r] = pred.landmarks;
+          angle = Math.atan2(r[1] - l[1], r[0] - l[0]);
+        }
+        return { x: cx, y: cy, w: ww, h: hh, angle };
+      });
 
-        // 検出された幅と高さ
-        const w_orig = x_end - x_start;
-        const h_orig = y_end - y_start;
-        
-        // ----------------------------------------------------
-        // ✨ 調整ロジック ✨
-        // ----------------------------------------------------
-        
-        // 1. パディング（拡大）を設定
-        // 幅を約20%拡大するパディング
-        const W_PADDING_RATIO = 0.30; 
-        const H_PADDING_RATIO = 0.40; // 縦はもっと大きく拡大し、上にずらす
-        
-        // 拡大後の新しい幅
-        const w_new = w_orig * (1 + W_PADDING_RATIO);
-        // 拡大後の新しい高さ
-        const h_new = h_orig * (1 + H_PADDING_RATIO); 
-
-        // 2. 新しい描画開始位置の計算
-        // x座標を中央寄せで調整
-        const x_new = x_start - (w_new - w_orig) / 2;
-        // y座標を上に調整 (例: 検出された開始位置から上に10%ずらす)
-        // 💡 BlazeFaceは鼻のあたりを検出するため、上に大きくパディングが必要です
-        const y_new = y_start - h_orig * 0.3; // 検出高さの15%分上に移動させる
-
-        // 3. 描画
-        // 新しい位置とサイズで合成画像をdrawImage
-        ctx.drawImage(overlayImage, x_new, y_new, w_new, h_new);
-    });
-    loadingCss.style = "display:none;";
-    loadingText.style = "display:none;";
-
-    downloadBtn.disabled = false;
+      redraw();
+      loadingCss.style = "display:none;";
+      loadingText.style = "display:none;";
+      addBtn.disabled = false;
+      deleteBtn.disabled = false;
+      downloadBtn.disabled = false;
     });
 
-    // 🔹 加工画像をダウンロード
+    addBtn.addEventListener("click", () => {
+      overlays.push({
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        w: 200,
+        h: 200,
+        angle: 0
+      });
+      redraw();
+    });
+
+    deleteBtn.addEventListener("click", () => {
+      if (selectedIndex !== null) {
+        overlays.splice(selectedIndex, 1);
+        selectedIndex = null;
+        redraw();
+      }
+    });
+
     downloadBtn.addEventListener("click", () => {
       const a = document.createElement("a");
-      a.href = canvas.toDataURL("image/png");
+      a.href = renderFinalImage();
       a.download = "processed.png";
       a.click();
     });
 
-    window.onload = init; // 起動時にモデルロード
+    // ====== 描画関連 ======
+    function redraw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0);
+      overlays.forEach((o, i) => drawOverlay(o, i === selectedIndex));
+    }
+
+    function drawOverlay(o, selected=false) {
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.rotate(o.angle);
+      ctx.drawImage(overlayImage, -o.w/2, -o.h/2, o.w, o.h);
+      if (selected) {
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-o.w/2, -o.h/2, o.w, o.h);
+      }
+      ctx.restore();
+    }
+
+    // ====== マウス操作 ======
+    canvas.addEventListener("mousedown", e => {
+      const mouse = getMousePos(e);
+      selectedIndex = findOverlayAt(mouse.x, mouse.y);
+      if (selectedIndex !== null) {
+        const o = overlays[selectedIndex];
+        const dx = mouse.x - o.x;
+        const dy = mouse.y - o.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const edge = Math.max(o.w, o.h) / 2;
+        if (Math.abs(dist - edge) < 20) resizing = true;
+        else if (e.shiftKey) rotating = true;
+        else dragging = true;
+      }
+      lastMouse = mouse;
+      redraw();
+    });
+
+    canvas.addEventListener("mousemove", e => {
+      if (selectedIndex === null) return;
+      const mouse = getMousePos(e);
+      const o = overlays[selectedIndex];
+      const dx = mouse.x - lastMouse.x;
+      const dy = mouse.y - lastMouse.y;
+
+      if (dragging) {
+        o.x += dx;
+        o.y += dy;
+      } else if (rotating) {
+        const a1 = Math.atan2(lastMouse.y - o.y, lastMouse.x - o.x);
+        const a2 = Math.atan2(mouse.y - o.y, mouse.x - o.x);
+        o.angle += a2 - a1;
+      } else if (resizing) {
+        o.w += dx;
+        o.h += dy;
+      }
+
+      lastMouse = mouse;
+      redraw();
+    });
+
+    canvas.addEventListener("mouseup", () => {
+      dragging = rotating = resizing = false;
+    });
+
+    function getMousePos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (canvas.width / rect.width),
+        y: (e.clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function findOverlayAt(x, y) {
+      for (let i = overlays.length - 1; i >= 0; i--) {
+        const o = overlays[i];
+        const dx = x - o.x;
+        const dy = y - o.y;
+        const r = Math.sqrt(dx*dx + dy*dy);
+        if (r < Math.max(o.w, o.h)/2) return i;
+      }
+      return null;
+    }
+
+    // ====== 最終出力 ======
+    function renderFinalImage() {
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const tctx = tmp.getContext("2d");
+      tctx.drawImage(image, 0, 0);
+      overlays.forEach(o => {
+        tctx.save();
+        tctx.translate(o.x, o.y);
+        tctx.rotate(o.angle);
+        tctx.drawImage(overlayImage, -o.w/2, -o.h/2, o.w, o.h);
+        tctx.restore();
+      });
+      return tmp.toDataURL("image/png");
+    }
+
+    window.onload = init;
   </script>
-  <footer style="width: 100%;">
+
+  <footer style="width:100%;">
     <hr>
-    <p style="text-align: center;color: #777;">© 2025 PotatoTimeKun<br>常識の範囲内でお使いください。<br>MIT Licence</p>
+    <p style="text-align:center;color:#777;">
+      © 2025 PotatoTimeKun<br>
+      常識の範囲内でお使いください。<br>
+      MIT Licence
+    </p>
   </footer>
 </body>
 </html>
